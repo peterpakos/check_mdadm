@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#
+# Nagios script for checking status of RAID devices in /etc/mdstat.
+#
+# Author: Peter Pakos <peter.pakos@wandisco.com>
+
+MDSTAT="/proc/mdstat"
+
+die () {
+  echo "$2"
+  exit "$1"
+}
+
+# Exit if /etc/mdstat does not exist
+if [[ ! -f "$MDSTAT" ]]; then
+ die 3 "UNKNOWN - ${MDSTAT} does not exist"
+fi
+
+# Get count of RAID arrays
+RAID_DEVICES=$(grep ^md -c $MDSTAT)
+
+# Exit if no RAID devices found
+if [[ $RAID_DEVICES -eq 0 ]]; then
+ die 3 "UNKNOWN - No RAID devices found"
+fi
+
+# Get count of degraded arrays
+RAID_STATUS=$(grep "\[.*_.*\]" $MDSTAT -c)
+
+# Is an array currently recovering, get percentage of recovery
+RAID_RECOVER=$(grep recovery $MDSTAT | awk '{print $4}')
+RAID_RESYNC=$(grep resync $MDSTAT | awk '{print $4}')
+
+# Check RAID status
+# RAID recovers --> Warning
+if [[ $RAID_RECOVER ]]; then
+  STATUS="WARNING - Checked $RAID_DEVICES arrays, recovering: $RAID_RECOVER"
+  EXIT=1
+elif [[ $RAID_RESYNC ]]; then
+  STATUS="WARNING - Checked $RAID_DEVICES arrays, resync: $RAID_RESYNC"
+  EXIT=1
+# RAID OK
+elif [[ $RAID_STATUS -eq 0 ]]; then
+  STATUS="OK - Checked $RAID_DEVICES arrays"
+  EXIT=0
+# All else critical, better save than sorry
+else
+  STATUS="CRITICAL - Checked $RAID_DEVICES arrays, $RAID_STATUS have FAILED"
+  EXIT=2
+fi
+
+# Status and quit
+die $EXIT "${STATUS}"
